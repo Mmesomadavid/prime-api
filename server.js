@@ -16,13 +16,26 @@ const app = express();
 // Connect DB
 connectDB();
 
-// Middleware
+// ✅ FIXED CORS CONFIG
+const allowedOrigins = [
+  "http://localhost:5173", // Vite local dev
+  "https://prime-client-app.vercel.app", // Production client
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "https://prime-client-app.vercel.app",
-    credentials: true,
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow REST tools or mobile apps
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      console.warn("❌ Blocked by CORS:", origin);
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true, // needed for cookies/session-based auth
   })
 );
+
 app.use(express.json());
 app.use(morgan("dev"));
 

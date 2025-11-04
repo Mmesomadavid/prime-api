@@ -5,7 +5,7 @@ import {
   register,
   verifyOTP,
   login,
-  getCurrentUser
+  getCurrentUser,
 } from "../controllers/authController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
 
@@ -16,7 +16,7 @@ router.post("/register", register);
 router.post("/verify-otp", verifyOTP);
 router.post("/login", login);
 
-// 🟢 Google OAuth
+// 🟢 Google OAuth with dynamic redirect based on userType
 router.get(
   "/google",
   passport.authenticate("google", { scope: ["profile", "email"] })
@@ -26,20 +26,31 @@ router.get(
   "/google/callback",
   passport.authenticate("google", { failureRedirect: "/login" }),
   (req, res) => {
-    // Redirect the user after successful authentication
-    res.redirect("/dashboard");
+    // Determine redirect path based on role
+    const role = req.user?.userType; // assuming userType = "doctor" or "organization"
+    let redirectPath = "/login";
+
+    if (role === "doctor") redirectPath = "/doctor/dashboard";
+    if (role === "organization") redirectPath = "/organization/dashboard";
+
+    res.redirect(redirectPath);
   }
 );
 
 // 🧍‍♂️ Protected route example
 router.get("/me", protect, getCurrentUser);
 
-// 🧱 Role-based example — only doctors or organizations can access
-router.get("/restricted", protect, authorize("doctor", "organization"), (req, res) => {
-  res.json({
-    success: true,
-    message: `Welcome ${req.user.name}, you have access to this protected route.`,
-  });
-});
+// 🧱 Role-based example
+router.get(
+  "/restricted",
+  protect,
+  authorize("doctor", "organization"),
+  (req, res) => {
+    res.json({
+      success: true,
+      message: `Welcome ${req.user.name}, you have access to this protected route.`,
+    });
+  }
+);
 
 export default router;
