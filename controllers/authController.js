@@ -122,28 +122,66 @@ export const verifyOTP = async (req, res, next) => {
   }
 };
 
+// 🟠 RESEND OTP
+export const resendOTP = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email)
+      return res.status(400).json({ message: "Email is required" });
+
+    const existingUser = await user.findOne({ email });
+    if (!existingUser)
+      return res.status(404).json({ message: "User not found" });
+
+    if (existingUser.isVerified)
+      return res.status(400).json({ message: "Account already verified" });
+
+    // Generate a new OTP
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    existingUser.otp = newOtp;
+    existingUser.otpExpires = otpExpires;
+    await existingUser.save();
+
+    // Send email
+    await sendOTPEmail(email, newOtp);
+
+    res.status(200).json({
+      message: "A new OTP has been sent to your email.",
+    });
+  } catch (err) {
+    console.error("Resend OTP Error:", err);
+    next(err);
+  }
+};
+
 // 🔵 LOGIN
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    const existinguser = await user.findOne({ email });
-    if (!existinguser)
+    const existingUser = await user.findOne({ email });
+    if (!existingUser)
       return res.status(400).json({ message: "Invalid credentials" });
 
-    if (!(await existinguser.matchPassword(password)))
+    const isMatch = await existingUser.matchPassword(password);
+    if (!isMatch)
       return res.status(400).json({ message: "Invalid credentials" });
 
-    if (!existinguser.isVerified)
+    if (!existingUser.isVerified)
       return res.status(403).json({ message: "Please verify your account" });
 
-    const token = generateToken(existinguser._id);
+    const token = generateToken(existingUser._id);
+
     res.status(200).json({
       token,
       user: {
-        id: existinguser._id,
-        email: existinguser.email,
-        userType: existinguser.userType,
+        _id: existingUser._id, // use consistent naming
+        email: existingUser.email,
+        userType: existingUser.userType,
+        isVerified: existingUser.isVerified, // ✅ ADD THIS LINE
       },
     });
   } catch (err) {

@@ -4,6 +4,7 @@ import passport from "passport";
 import {
   register,
   verifyOTP,
+  resendOTP,
   login,
   getCurrentUser,
 } from "../controllers/authController.js";
@@ -14,6 +15,7 @@ const router = express.Router();
 // 🆕 Public routes
 router.post("/register", register);
 router.post("/verify-otp", verifyOTP);
+router.post("/resend-otp", resendOTP);
 router.post("/login", login);
 
 // 🟢 Google OAuth with dynamic redirect based on userType
