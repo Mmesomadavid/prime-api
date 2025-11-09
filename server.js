@@ -5,9 +5,14 @@ import passport from "passport";
 import session from "express-session";
 import morgan from "morgan";
 import connectDB from "./configs/db.js";
-import authRoutes from "./routes/authRoutes.js";
 import "./configs/passport.js";
 import { notFound, errorHandler } from "./middlewares/errorHandler.js";
+
+// routes import
+import authRoutes from "./routes/authRoutes.js";
+import organizationRoutes from './routes/organizationRoutes.js'
+import doctorRoutes from './routes/doctorRoutes.js'
+import patientRoutes from './routes/patientRoutes.js'
 
 dotenv.config();
 
@@ -53,6 +58,9 @@ app.use(passport.session());
 
 // ✅ ROUTES
 app.use("/api/auth", authRoutes);
+app.use("/api/organizations", organizationRoutes);
+app.use("/api/doctors", doctorRoutes);
+app.use("/api/patients", patientRoutes);
 
 // Test route
 app.get("/", (req, res) => res.send("✅ PrimeHealth API is running..."));

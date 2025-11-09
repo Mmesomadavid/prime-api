@@ -4,6 +4,11 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import User from "../models/user.js";
 import Doctor from "../models/doctor.js";
 import Organisation from "../models/organisation.js";
+import dotenv from 'dotenv'
+
+
+dotenv.config()
+
 
 passport.use(
   new GoogleStrategy(

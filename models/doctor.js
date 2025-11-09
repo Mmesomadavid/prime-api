@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from "mongoose"
 
 const doctorSchema = new mongoose.Schema(
   {
@@ -17,8 +17,15 @@ const doctorSchema = new mongoose.Schema(
       type: String,
       default: "NG",
     },
+    organizations: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Organization",
+        maxlength: 3,
+      },
+    ],
   },
-  { timestamps: true }
-);
+  { timestamps: true },
+)
 
-export default mongoose.model("Doctor", doctorSchema);
+export default mongoose.model("Doctor", doctorSchema)
