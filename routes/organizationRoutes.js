@@ -8,6 +8,7 @@ import {
   updateStaff,
   deleteStaff,
 } from "../controllers/organizationController.js"
+import { protect } from "../middlewares/authMiddleware.js"
 
 const router = express.Router()
 
@@ -19,7 +20,7 @@ router.get("/:id", getOrganizationById)
 
 // Staff routes - ALL staff routes must come before generic /:id routes
 router.get("/:organizationId/staff", getOrganizationStaff)
-router.post("/:organizationId/staff", initializeStaff)
+router.post("/:organizationId/staff", protect, initializeStaff)
 router.put("/staff/:staffId", updateStaff)
 router.delete("/staff/:staffId", deleteStaff)
 

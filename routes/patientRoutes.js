@@ -1,31 +1,48 @@
-import express from "express"
+import express from "express";
+import multer from "multer";
 import {
-  createPatient,
+  createPatientByDoctor,
+  createPatientByOrganization,
   getPatientById,
   getPatientsByDoctor,
-  getPatientsByOrganization,
   updatePatient,
   deletePatient,
-} from "../controllers/patientController.js"
+  getMyPatients,
+} from "../controllers/patientController.js";
+import { protect, authorize } from "../middlewares/authMiddleware.js";
 
-const router = express.Router()
+const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
-// POST - Create a new patient
-router.post("/", createPatient)
+// CREATE PATIENT
+router.post(
+  "/doctor/create",
+  protect,
+  authorize("doctor"),
+  upload.single("passport"),
+  createPatientByDoctor
+);
 
-// GET - Get patient by ID
-router.get("/:id", getPatientById)
+router.post(
+  "/organization/create",
+  protect,
+  authorize("organization"),
+  upload.single("passport"),
+  createPatientByOrganization
+);
 
-// GET - Get all patients by doctor
-router.get("/doctor/:doctorId", getPatientsByDoctor)
+// FETCH - SPECIFIC ROUTES FIRST
+// Fetch all patients for logged-in doctor/organization
+router.get("/my", protect, authorize("doctor", "organization"), getMyPatients);
 
-// GET - Get all patients by organization
-router.get("/organization/:organizationId", getPatientsByOrganization)
+// Fetch patients by specific doctor ID
+router.get("/doctor/:doctorId", protect, authorize("doctor", "organization"), getPatientsByDoctor);
 
-// PUT - Update patient
-router.put("/:id", updatePatient)
+// FETCH - PARAMETERIZED ROUTES LAST
+router.get("/:id", protect, getPatientById);
 
-// DELETE - Delete patient
-router.delete("/:id", deletePatient)
+// UPDATE & DELETE
+router.put("/:id", protect, updatePatient);
+router.delete("/:id", protect, deletePatient);
 
-export default router
+export default router;

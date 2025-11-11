@@ -1,168 +1,179 @@
-import Patient from "../models/patient.js"
-import Doctor from "../models/doctor.js"
-import Organization from "../models/organisation.js"
+import mongoose from "mongoose";
+import Patient from "../models/patient.js";
+import Doctor from "../models/doctor.js";
+import cloudinary from "../utils/cloudinary.js";
 
-// ✅ Create a new patient
-export const createPatient = async (req, res) => {
-  try {
-    const {
-      firstName,
-      lastName,
-      email,
-      phone,
-      dateOfBirth,
-      medicalRecordNumber,
-      doctorId,
-      organizationId,
-      notes,
-    } = req.body
+// Helper: Validate ObjectId
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
-    // Validate required fields
-    if (!firstName || !lastName || !doctorId || !organizationId) {
-      return res.status(400).json({ error: "Missing required fields" })
-    }
+/* ------------------------------ CREATE PATIENT ----------------------------- */
+const createPatient = async ({ req, userType }) => {
+  const user = req.user;
+  if (!user) throw { status: 401, message: "Not authenticated" };
+  if (user.userType !== userType) throw { status: 403, message: `Only ${userType} accounts can create patients` };
 
-    // Check if doctor exists
-    const doctor = await Doctor.findById(doctorId)
-    if (!doctor) {
-      return res.status(404).json({ error: "Doctor not found" })
-    }
+  const { firstName, lastName, email, phone, dateOfBirth, medicalRecordNumber, doctorId, notes } = req.body;
 
-    // Check if organization exists
-    const organization = await Organization.findById(organizationId)
-    if (!organization) {
-      return res.status(404).json({ error: "Organization not found" })
-    }
+  if (!firstName || !lastName) throw { status: 400, message: "Missing required fields" };
+  if (!req.file || !req.file.buffer) throw { status: 400, message: "Patient avatar (passport) is required" };
 
-    // Verify doctor is tied to the organization
-    if (!doctor.organizations.includes(organizationId)) {
-      return res
-        .status(403)
-        .json({ error: "Doctor is not tied to this organization" })
-    }
-
-    // Check for duplicate medical record number
-    if (medicalRecordNumber) {
-      const existingPatient = await Patient.findOne({ medicalRecordNumber })
-      if (existingPatient) {
-        return res
-          .status(409)
-          .json({ error: "Medical record number already exists" })
-      }
-    }
-
-    // Create new patient
-    const patient = new Patient({
-      firstName,
-      lastName,
-      email,
-      phone,
-      dateOfBirth,
-      medicalRecordNumber,
-      doctorId,
-      organizationId,
-      notes,
-    })
-
-    await patient.save()
-
-    // Populate doctor and organization for response
-    await patient.populate("doctorId organizationId")
-
-    res.status(201).json({ message: "Patient created successfully", patient })
-  } catch (error) {
-    console.error("[v0] Error creating patient:", error)
-    res.status(500).json({ error: "Server error while creating patient" })
+  // Optional doctor lookup
+  let doctor = null;
+  if (userType === "doctor") {
+    doctor = await Doctor.findOne({ user: user._id });
+    if (!doctor) throw { status: 404, message: "Doctor profile not found" };
   }
-}
 
-// ✅ Get patient by ID
+  if (doctorId && !isValidObjectId(doctorId)) throw { status: 400, message: "Invalid doctor ID" };
+
+  if (medicalRecordNumber) {
+    const existingPatient = await Patient.findOne({ medicalRecordNumber });
+    if (existingPatient) throw { status: 409, message: "Medical record number already exists" };
+  }
+
+  // Upload avatar from memory buffer
+  const uploadFromBuffer = (buffer) =>
+    new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "patients", upload_preset: "primehealth" },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      );
+      stream.end(buffer);
+    });
+
+  const uploadResult = await uploadFromBuffer(req.file.buffer);
+
+  const patient = new Patient({
+    firstName,
+    lastName,
+    email,
+    phone,
+    dateOfBirth,
+    medicalRecordNumber,
+    doctorId: doctor?._id || doctorId || null,
+    createdBy: user._id,
+    createdByType: userType,
+    notes,
+    medicalRecords: [],
+    profilePicture: {
+      url: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+    },
+  });
+
+  await patient.save();
+  await patient.populate("doctorId");
+
+  return patient;
+};
+
+/* ------------------------------ CREATE BY DOCTOR ----------------------------- */
+export const createPatientByDoctor = async (req, res) => {
+  try {
+    const patient = await createPatient({ req, userType: "doctor" });
+    res.status(201).json({ message: "Patient created successfully", patient });
+  } catch (err) {
+    console.error("[v2] Error creating patient by doctor:", err);
+    res.status(err.status || 500).json({ error: err.message || "Server error" });
+  }
+};
+
+/* --------------------------- CREATE BY ORGANIZATION -------------------------- */
+export const createPatientByOrganization = async (req, res) => {
+  try {
+    const patient = await createPatient({ req, userType: "organization" });
+    res.status(201).json({ message: "Patient created successfully", patient });
+  } catch (err) {
+    console.error("[v2] Error creating patient by organization:", err);
+    res.status(err.status || 500).json({ error: err.message || "Server error" });
+  }
+};
+
+/* ----------------------------- FETCHING FUNCTIONS ---------------------------- */
 export const getPatientById = async (req, res) => {
   try {
-    const { id } = req.params
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid patient ID" });
 
-    const patient = await Patient.findById(id).populate("doctorId organizationId")
+    const patient = await Patient.findById(id).populate("doctorId medicalRecords");
+    if (!patient) return res.status(404).json({ error: "Patient not found" });
 
-    if (!patient) {
-      return res.status(404).json({ error: "Patient not found" })
-    }
-
-    res.status(200).json(patient)
+    res.status(200).json(patient);
   } catch (error) {
-    console.error("[v0] Error fetching patient:", error)
-    res.status(500).json({ error: "Server error while fetching patient" })
+    console.error("[v2] Error fetching patient:", error);
+    res.status(500).json({ error: "Server error while fetching patient" });
   }
-}
+};
 
-// ✅ Get all patients by doctor
 export const getPatientsByDoctor = async (req, res) => {
   try {
-    const { doctorId } = req.params
+    const { doctorId } = req.params;
+    if (!isValidObjectId(doctorId)) return res.status(400).json({ error: "Invalid doctor ID" });
 
-    const patients = await Patient.find({ doctorId }).populate(
-      "doctorId organizationId"
-    )
-
-    res.status(200).json(patients)
+    const patients = await Patient.find({ doctorId }).populate("doctorId");
+    res.status(200).json(patients);
   } catch (error) {
-    console.error("[v0] Error fetching patients by doctor:", error)
-    res.status(500).json({ error: "Server error while fetching patients" })
+    console.error("[v2] Error fetching patients by doctor:", error);
+    res.status(500).json({ error: "Server error while fetching patients" });
   }
-}
+};
 
-// ✅ Get all patients by organization
-export const getPatientsByOrganization = async (req, res) => {
-  try {
-    const { organizationId } = req.params
-
-    const patients = await Patient.find({ organizationId }).populate(
-      "doctorId organizationId"
-    )
-
-    res.status(200).json(patients)
-  } catch (error) {
-    console.error("[v0] Error fetching patients by organization:", error)
-    res.status(500).json({ error: "Server error while fetching patients" })
-  }
-}
-
-// ✅ Update patient
+/* ----------------------------- UPDATING PATIENT ----------------------------- */
 export const updatePatient = async (req, res) => {
   try {
-    const { id } = req.params
-    const { firstName, lastName, email, phone, dateOfBirth, notes } = req.body
+    const { id } = req.params;
+    const user = req.user;
 
-    const patient = await Patient.findByIdAndUpdate(
-      id,
-      { firstName, lastName, email, phone, dateOfBirth, notes },
-      { new: true }
-    ).populate("doctorId organizationId")
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid patient ID" });
 
-    if (!patient) {
-      return res.status(404).json({ error: "Patient not found" })
-    }
+    const patient = await Patient.findById(id);
+    if (!patient) return res.status(404).json({ error: "Patient not found" });
 
-    res.status(200).json({ message: "Patient updated successfully", patient })
+    if (!patient.createdBy.equals(user._id)) return res.status(403).json({ error: "Not authorized" });
+
+    const updated = await Patient.findByIdAndUpdate(id, req.body, { new: true }).populate("doctorId");
+    res.status(200).json({ message: "Patient updated successfully", patient: updated });
   } catch (error) {
-    console.error("[v0] Error updating patient:", error)
-    res.status(500).json({ error: "Server error while updating patient" })
+    console.error("[v2] Error updating patient:", error);
+    res.status(500).json({ error: "Server error while updating patient" });
   }
-}
+};
 
-// ✅ Delete patient
+/* ----------------------------- DELETE PATIENT ----------------------------- */
 export const deletePatient = async (req, res) => {
+  res.status(403).json({ error: "Patients cannot be deleted — only editable." });
+};
+
+
+/* --------------------------- FETCH ALL PATIENTS FOR USER --------------------------- */
+export const getMyPatients = async (req, res) => {
   try {
-    const { id } = req.params
+    const user = req.user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
 
-    const patient = await Patient.findByIdAndDelete(id)
+    let filter = {};
 
-    if (!patient) {
-      return res.status(404).json({ error: "Patient not found" })
+    if (user.userType === "doctor") {
+      // Find the doctor profile first
+      const doctor = await Doctor.findOne({ user: user._id });
+      if (!doctor) return res.status(404).json({ error: "Doctor profile not found" });
+
+      filter = { doctorId: doctor._id };
+    } else if (user.userType === "organization") {
+      // Organization patients are those created by this organization user
+      filter = { createdBy: user._id, createdByType: "organization" };
+    } else {
+      return res.status(403).json({ error: "Only doctors or organizations can fetch patients" });
     }
 
-    res.status(200).json({ message: "Patient deleted successfully" })
+    const patients = await Patient.find(filter).populate("doctorId");
+    res.status(200).json(patients);
   } catch (error) {
-    console.error("[v0] Error deleting patient:", error)
-    res.status(500).json({ error: "Server error while deleting patient" })
+    console.error("[v2] Error fetching my patients:", error);
+    res.status(500).json({ error: "Server error while fetching patients" });
   }
-}
+};

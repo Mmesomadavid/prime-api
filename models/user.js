@@ -15,10 +15,14 @@ const userSchema = new mongoose.Schema(
     },
     userType: {
       type: String,
-      enum: ["organization", "doctor"],
+      enum: ["organization", "doctor", "patient"],
       required: true,
     },
     isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    profileCompleted: {
       type: Boolean,
       default: false,
     },
@@ -29,7 +33,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before save
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   const salt = await bcrypt.genSalt(10);

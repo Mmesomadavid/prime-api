@@ -28,6 +28,12 @@ const organizationSchema = new mongoose.Schema(
         ref: "Doctor",
       },
     ],
+    staff: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Staff",
+      },
+    ],
   },
   { timestamps: true },
 )
